@@ -1,0 +1,11 @@
+Third-party single-file libraries, unmodified.
+
+stb_image.h v2.30 (public domain or MIT, licence at the end of the file)
+from https://github.com/nothings/stb, commit 013ac3beddff3dbffafd5177e7972067cd2b5083 (2024-05-31; the stb repository has no release tags)
+https://raw.githubusercontent.com/nothings/stb/013ac3beddff3dbffafd5177e7972067cd2b5083/stb_image.h
+sha256 594c2fe35d49488b4382dbfaec8f98366defca819d916ac95becf3e75f4200b3
+
+miniz.c, miniz.h (MIT, see miniz_LICENSE) from the miniz release 3.0.2
+https://github.com/richgel999/miniz/releases/download/3.0.2/miniz-3.0.2.zip (tag 3.0.2)
+sha256 miniz.c 0fcdc9888cb3a29ca8f176bac087e5fe6c7258a6ab06b1c271c1e109a11d3740
+sha256 miniz.h 295d1a0041aea09609598c0f1f35c1977ca05ad662acbadcfdaac44c140af37b

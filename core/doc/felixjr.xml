@@ -1,0 +1,104 @@
+<mame>
+	<machine name="felixjr" sourcefile="tobikomi/felix.cpp">
+		<description>Fix-It Felix Jr.</description>
+		<year>1982</year>
+		<manufacturer>Tobikomi</manufacturer>
+		<rom name="fj-p1.1d" size="32768" crc="08c5f3ef" sha1="722f4c1742f738c30fb9b05768b7920f1c3e328c" region="maincpu" offset="0"/>
+		<rom name="fj-p2.1e" size="32768" crc="c691b8ed" sha1="190a75145aa7229ebbfe30e52ad08c93bc23ab71" region="maincpu" offset="8000"/>
+		<rom name="fj-p3.1f" size="32768" crc="8fa3f930" sha1="e8713b15fc49fa2ecc1a753e6c97c6fbb291b753" region="maincpu" offset="10000"/>
+		<rom name="fj-p4.1g" size="32768" crc="a2d798ae" sha1="30dc0d3696db834be005cce83cb550e2f9752846" region="maincpu" offset="18000"/>
+		<rom name="fj-t1.5h" size="32768" crc="0a739c86" sha1="97e1e79804a23ec0e046bd77ae388decd0f9badb" region="gfx1" offset="0"/>
+		<rom name="fj-t2.5j" size="32768" crc="4e13ca76" sha1="1b7614e89b7afc031cb703d7ab9ce2a869e9a4ea" region="gfx1" offset="8000"/>
+		<rom name="fj-s1.7a" size="32768" crc="c34f3849" sha1="baaa8e5f89744cda1801506adeb4a024d582d246" region="gfx2" offset="0"/>
+		<rom name="fj-s2.7b" size="32768" crc="0c55475c" sha1="338c181ef2748286d14b4daa975ca5e6d5c79327" region="gfx2" offset="8000"/>
+		<rom name="fj-s3.7c" size="32768" crc="10ef81e8" sha1="5f579b5393aafc209ec9f3c33264e7f4792a82fb" region="gfx2" offset="10000"/>
+		<rom name="fj-s4.7d" size="32768" crc="c7f3f68c" sha1="2f47e86ffa0c0c983b9b5d4033af9e8d2fc976e0" region="gfx2" offset="18000"/>
+		<rom name="fj-s5.7e" size="32768" crc="1a2663d9" sha1="a36467eda4d664a73cc6fc583ff8474a6d881454" region="gfx2" offset="20000"/>
+		<rom name="fj-s6.7f" size="32768" crc="e267fb43" sha1="14ac42284122fa607c600fe62da723494800e483" region="gfx2" offset="28000"/>
+		<rom name="fj-s7.7g" size="32768" crc="011ffca6" sha1="5188431849b4613152fd7bdba6a3ff0a4fd6424b" region="gfx2" offset="30000"/>
+		<rom name="fj-s8.7h" size="32768" crc="011ffca6" sha1="5188431849b4613152fd7bdba6a3ff0a4fd6424b" region="gfx2" offset="38000"/>
+		<rom name="fj-v1.3a" size="524288" crc="d1bf75b1" sha1="16933ec2c39705673394e38d807f14096b7f2cf0" region="samples" offset="0"/>
+		<rom name="fj-v2.3b" size="524288" crc="46a2323e" sha1="0dba1f86bf55c348995aa0d15ec5591edfb80c56" region="samples" offset="80000"/>
+		<rom name="fj-v3.3c" size="524288" crc="7f50a363" sha1="9b342193f350ae29666feb57ccf4d1b67b4df672" region="samples" offset="100000"/>
+		<rom name="fj-v4.3d" size="524288" crc="605babf0" sha1="7aa781323e875d0223963eb0740e4b26a5ff635f" region="samples" offset="180000"/>
+		<rom name="fj-pl.6b" size="1024" crc="99eb64c2" sha1="d9233d274f223c3a4ebb7ac0796f305e09074e77" region="proms" offset="0"/>
+		<rom name="fj-ph.6c" size="1024" crc="bf08463a" sha1="a4a102a3200c43a74e907278c988c7f64359c1d8" region="proms" offset="400"/>
+		<display tag="screen" type="raster" rotate="90" width="320" height="240" refresh="59.623" pixclock="6857143" htotal="439" hbend="0" hbstart="320" vtotal="262" vbend="0" vbstart="240" />
+		<sound channels="1"/>
+		<input players="2" coins="2">
+			<control type="joy" player="1" buttons="2" ways="4"/>
+			<control type="joy" player="2" buttons="2" ways="4"/>
+		</input>
+		<dipswitch name="Lives" tag="DSW1" mask="3">
+			<diplocation name="DSW1" number="1"/>
+			<diplocation name="DSW1" number="2"/>
+			<dipvalue name="3" value="0" default="yes"/>
+			<dipvalue name="2" value="1"/>
+			<dipvalue name="4" value="2"/>
+			<dipvalue name="5" value="3"/>
+		</dipswitch>
+		<dipswitch name="Bonus Life" tag="DSW1" mask="12">
+			<diplocation name="DSW1" number="3"/>
+			<diplocation name="DSW1" number="4"/>
+			<dipvalue name="Every 5000" value="0" default="yes"/>
+			<dipvalue name="Every 10000" value="4"/>
+			<dipvalue name="Every 20000" value="8"/>
+			<dipvalue name="None" value="12"/>
+		</dipswitch>
+		<dipswitch name="Difficulty" tag="DSW1" mask="48">
+			<diplocation name="DSW1" number="5"/>
+			<diplocation name="DSW1" number="6"/>
+			<dipvalue name="Normal" value="0" default="yes"/>
+			<dipvalue name="Easy" value="16"/>
+			<dipvalue name="Hard" value="32"/>
+			<dipvalue name="Hardest" value="48"/>
+		</dipswitch>
+		<dipswitch name="Demo Sounds" tag="DSW1" mask="64">
+			<diplocation name="DSW1" number="7"/>
+			<dipvalue name="On" value="0" default="yes"/>
+			<dipvalue name="Off" value="64"/>
+		</dipswitch>
+		<dipswitch name="Cabinet" tag="DSW1" mask="128">
+			<diplocation name="DSW1" number="8"/>
+			<dipvalue name="Upright" value="0" default="yes"/>
+			<dipvalue name="Cocktail" value="128"/>
+		</dipswitch>
+		<dipswitch name="Coin A" tag="DSW2" mask="15">
+			<diplocation name="DSW2" number="1"/>
+			<diplocation name="DSW2" number="2"/>
+			<diplocation name="DSW2" number="3"/>
+			<diplocation name="DSW2" number="4"/>
+			<dipvalue name="1 Coin/1 Credit" value="0" default="yes"/>
+			<dipvalue name="2 Coins/1 Credit" value="1"/>
+			<dipvalue name="3 Coins/1 Credit" value="2"/>
+			<dipvalue name="4 Coins/1 Credit" value="3"/>
+			<dipvalue name="1 Coin/2 Credits" value="4"/>
+			<dipvalue name="1 Coin/3 Credits" value="5"/>
+			<dipvalue name="1 Coin/4 Credits" value="6"/>
+			<dipvalue name="1 Coin/5 Credits" value="7"/>
+			<dipvalue name="1 Coin/6 Credits" value="8"/>
+			<dipvalue name="Free Play" value="9"/>
+		</dipswitch>
+		<dipswitch name="Coin B" tag="DSW2" mask="240">
+			<diplocation name="DSW2" number="5"/>
+			<diplocation name="DSW2" number="6"/>
+			<diplocation name="DSW2" number="7"/>
+			<diplocation name="DSW2" number="8"/>
+			<dipvalue name="1 Coin/1 Credit" value="0" default="yes"/>
+			<dipvalue name="2 Coins/1 Credit" value="16"/>
+			<dipvalue name="3 Coins/1 Credit" value="32"/>
+			<dipvalue name="4 Coins/1 Credit" value="48"/>
+			<dipvalue name="1 Coin/2 Credits" value="64"/>
+			<dipvalue name="1 Coin/3 Credits" value="80"/>
+			<dipvalue name="1 Coin/4 Credits" value="96"/>
+			<dipvalue name="1 Coin/5 Credits" value="112"/>
+			<dipvalue name="1 Coin/6 Credits" value="128"/>
+		</dipswitch>
+		<dipswitch name="Invulnerability" tag="DSW3" mask="1">
+			<diplocation name="DSW3" number="1"/>
+			<dipvalue name="Off" value="0" default="yes"/>
+			<dipvalue name="On" value="1"/>
+		</dipswitch>
+		<driver status="good" emulation="good" savestate="unsupported"/>
+	</machine>
+</mame>

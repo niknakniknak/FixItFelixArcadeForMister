@@ -1,0 +1,30 @@
+felix:
+  - get:
+    - jtfelix_game.v
+    - jtfelix_main.v
+    - jtfelix_cab.v
+    - jtfelix_video.v
+    - jtfelix_tiles.v
+    - jtfelix_colmix.v
+    - jtfelix_obj.v
+    - jtfelix_obj_scan.v
+    - jtfelix_obj_draw.v
+    - jtfelix_obj_dma.v
+    - jtfelix_sound.v
+jtframe:
+  - get:
+    - jtframe_sh.v
+  - from: cpu
+    get:
+      - jtframe_z80.yaml
+  - from: ram
+    get:
+      - jtframe_ram.v
+      - jtframe_dual_ram.v
+  - from: video
+    get:
+      - jtframe_vtimer.v
+      - jtframe_blank.v
+      - jtframe_scroll.yaml
+      - jtframe_obj.yaml
+jtx1010:
