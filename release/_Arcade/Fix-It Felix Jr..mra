@@ -66,7 +66,7 @@
     <nvram index="2" size="1024"/>
     <!-- Vertical screen. -->
     <rom index="1">
-        <part>01 B4</part>
+        <part>01 FF</part>
     </rom>
     <switches page_id="1" page_name="Switches" base="16" default="00,00">
         <DSW1/>

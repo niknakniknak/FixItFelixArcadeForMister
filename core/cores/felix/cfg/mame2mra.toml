@@ -8,7 +8,7 @@ main_setnames=[ "felixjr" ]
 
 [Audio]
 volume = [
-    { machine="felixjr", value=0xB4 },
+    { machine="felixjr", value=0xFF },
 ]
 
 [buttons]

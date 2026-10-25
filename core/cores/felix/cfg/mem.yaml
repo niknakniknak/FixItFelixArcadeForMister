@@ -16,8 +16,9 @@ clocks:
         - pcm_cen
 audio:
   rsum: 10k
+  gain: 1.99
   channels:
-    - { name: pcm, data_width: 15, unsigned: false, rsum: 10k, fir: fir_192k_8k.csv }
+    - { name: pcm, data_width: 15, unsigned: false, rsum: 10k, fir: fir_felix_8k.csv }
 sdram:
   banks:
     - buses:
