@@ -162,6 +162,42 @@ static void test_game_start(void)
     CHECK(pl.felix.row == 0 && pl.felix.slot == 4, "felix walked in to the bottom-right window");
 }
 
+static uint8_t sfx_keyed(void)
+{
+    uint8_t v, n = 0;
+    for (v = 1; v < VOICES; v++)
+        n += X1_CTRL(v) & X1_KEYON;
+    return n;
+}
+
+static void test_demo_sounds_off(void)
+{
+    unsigned n;
+    game_init();
+    DSW1 = 0x40;
+    run(1);
+    n = run_until_state(ST_TITLE, 1000);
+    CHECK(game_state == ST_TITLE, "boot reaches title (%u frames)", n);
+    run(60);
+    CHECK(!(X1_CTRL(0) & X1_KEYON) && !sfx_keyed(), "title is silent with demo sounds off");
+    fake_io[2] |= SYS_COIN_A;
+    run(2);
+    CHECK(sfx_keyed(), "coin sound plays with demo sounds off");
+    fake_io[2] &= (uint8_t)~SYS_COIN_A;
+    run(30);
+    fake_io[2] |= SYS_START1;
+    run(2);
+    CHECK(sfx_keyed(), "start sound plays with demo sounds off");
+    fake_io[2] &= (uint8_t)~SYS_START1;
+    run(60);
+    CHECK(X1_CTRL(0) & X1_KEYON, "intro music plays with demo sounds off");
+    n = run_until_state(ST_PLAY, 5000);
+    CHECK(game_state == ST_PLAY, "intro reaches play (%u frames)", n);
+    run(60);
+    CHECK(X1_CTRL(0) & X1_KEYON, "game music plays with demo sounds off");
+    DSW1 = 0;
+}
+
 static void test_demo(void)
 {
     unsigned n, play = 0;
@@ -476,6 +512,7 @@ int main(void)
     test_scoring();
     test_hiscore();
     test_game_start();
+    test_demo_sounds_off();
     test_demo();
     test_two_players();
     test_progress(5);

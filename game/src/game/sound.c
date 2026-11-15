@@ -69,9 +69,9 @@ void sound_init(void) BANKED
 
 void sound_mute(uint8_t on) BANKED
 {
-    muted = on;
-    if (on)
+    if (on && !muted)
         sound_stop_all();
+    muted = on;
 }
 
 void sound_stop_all(void) BANKED
@@ -132,7 +132,7 @@ uint8_t music_current(void) BANKED
 void sfx_play(uint8_t sample) BANKED
 {
     uint8_t v;
-    if (muted && sample != SND_COIN)
+    if (muted && sample != SND_COIN && sample != SND_START)
         return;
     for (v = FIRST_SFX; v < VOICES; v++) {
         if (voice_sample[v] == sample) {

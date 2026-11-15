@@ -104,6 +104,11 @@ static uint8_t in_attract(void)
     return 0;
 }
 
+static void attract_mute(void)
+{
+    sound_mute((dsw1 & 0x40) && in_attract());
+}
+
 static void play_enter(void)
 {
     key_latch = 0;
@@ -151,6 +156,7 @@ static void cutscene_enter(void)
 static void state_enter(uint8_t s)
 {
     game_state = s;
+    attract_mute();
     statics_dirty = 1;
     scroll_x = 0;
     switch (s) {
@@ -604,7 +610,8 @@ void game_frame(void)
     sound_tick();
     anim_tick_all();
     ticks++;
-    sound_mute((dsw1 & 0x40) && in_attract());
+    if (!state_pending)
+        attract_mute();
     if (crash_pending)
         crash_start();
     if (state_pending)
