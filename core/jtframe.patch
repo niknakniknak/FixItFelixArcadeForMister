@@ -1,0 +1,1325 @@
+diff --git a/modules/jtframe/bin/lint-one.sh b/modules/jtframe/bin/lint-one.sh
+index f2fdd36ea..b411cc32b 100755
+--- a/modules/jtframe/bin/lint-one.sh
++++ b/modules/jtframe/bin/lint-one.sh
+@@ -138,7 +138,9 @@ run_linter() {
+ }
+ 
+ check_msg() {
+-    jtframe msg $CORE
++    if [[ -e $CORES/$CORE/cfg/msg ]]; then
++        jtframe msg $CORE
++    fi
+ }
+ 
+ clean_up() {
+diff --git a/modules/jtframe/cfg/sdram/jtframe_sdram64.yaml b/modules/jtframe/cfg/sdram/jtframe_sdram64.yaml
+index cebfd6923..38f83151a 100644
+--- a/modules/jtframe/cfg/sdram/jtframe_sdram64.yaml
++++ b/modules/jtframe/cfg/sdram/jtframe_sdram64.yaml
+@@ -6,6 +6,7 @@ jtframe:
+       - jtframe_sdram64_init.v
+       - jtframe_sdram64_rfsh.v
+       - jtframe_sdram64_latch.v
++      - jtframe_sdram64_dwnld.v
+       - jtframe_ramslot_ctrl.v
+       - jtframe_ram1_1slot.v
+       - jtframe_ram1_2slots.v
+diff --git a/modules/jtframe/doc/clocks.md b/modules/jtframe/doc/clocks.md
+index c3d693c33..1fe81847a 100644
+--- a/modules/jtframe/doc/clocks.md
++++ b/modules/jtframe/doc/clocks.md
+@@ -30,7 +30,7 @@ This only applies to MiSTer. For MiST the approach is different and there are tw
+ 
+ The script **jtcore** handles this process transparently.
+ 
+-**JTFRAME_MR_FASTIO** enables fast ROM download in MiSTer using 16-bit mode in _hps_io_.
++**JTFRAME_MR_FASTIO** enables fast ROM download in MiSTer using 16-bit mode in _hps_io_ (see _jtframe_mister_fastio_).
+ 
+ ## Clock Enable Signals
+ 
+diff --git a/modules/jtframe/doc/jtframe-mra.md b/modules/jtframe/doc/jtframe-mra.md
+index 3b48b596d..f3a833bc8 100644
+--- a/modules/jtframe/doc/jtframe-mra.md
++++ b/modules/jtframe/doc/jtframe-mra.md
+@@ -148,7 +148,8 @@ frames = [
+ # Name and map are selected together by machine/setname, including clones.
+ # Omitting map keeps the existing defaults. --buttons overrides names and
+ # resets the MRA mapping to the default order.
+-# The framework appends Start, Coin, Core credits, Test, Service after the
++# The framework appends Start, Coin, Core credits (Pause for cores without
++# cfg/msg), Test, Service after the
+ # gameplay buttons. Their default pad mapping is Start, Select, L2, R2, L3.
+ names=[
+ 	{ setname="...", machine="...", names="shot,jump" }
+diff --git a/modules/jtframe/doc/macros.md b/modules/jtframe/doc/macros.md
+index b53ffb0e2..88bb57d2c 100644
+--- a/modules/jtframe/doc/macros.md
++++ b/modules/jtframe/doc/macros.md
+@@ -73,7 +73,7 @@ JTFRAME_MR_DDR           | MiSTer  | Defined internally when MiSTer DDR is used.
+ JTFRAME_MR_DDRLOAD       | MiSTer  | ROM download process uses the DDR as proxy
+ JTFRAME_MR_GAME_DDR      | MiSTer  | Game module gets the DDR3 port (ddr_* signals on clk_rom, see sdram.md). Not with rotation, LF buffer or DDR load
+ JTFRAME_MR_LF_BRAM       | MiSTer  | Use BRAM instead of DDR for JTFRAME_LF_BUFFER. Automatically set when JTFRAME_VERTICAL is also enabled
+-JTFRAME_MR_FASTIO        | MiSTer  | 16-bit ROM load in MiSTer. Set by default if CLK96 is set
++JTFRAME_MR_FASTIO        | MiSTer  | 16-bit ROM load (and NVRAM save) transfers in MiSTer, set to 1 to enable
+ JTFRAME_NO_ANALOGIZER    | Pocket  | Disables analog video output and SNAC controllers through cartridge pins. Defined by default if JTFRAME_RELEASE is not defined
+ JTFRAME_NO_DB15          | MiSTer  | Disables DB15 controller modules
+ JTFRAME_NOSTA            |         | jtcore will not check STA and will produce a PASS regardless of it
+diff --git a/modules/jtframe/doc/sim.md b/modules/jtframe/doc/sim.md
+index 941c8aff5..9573f9daf 100644
+--- a/modules/jtframe/doc/sim.md
++++ b/modules/jtframe/doc/sim.md
+@@ -47,7 +47,7 @@ set_global_assignment -name VERILOG_MACRO "JTFRAME_MIST_DIRECT=0"
+ ```
+ 
+ ## MiSTer
+-In order to preserve the 8-bit ROM download interface with MiST, _jtframe_mister_ presents it too. However it can operate internally with 16-bit packets if the macro **JTFRAME_MR_FASTIO** is set to 1. This has only been tested with the 96MHz clock.
++In order to preserve the 8-bit ROM download interface with MiST, _jtframe_mister_ presents it too. However it can operate internally with 16-bit packets if the macro **JTFRAME_MR_FASTIO** is set to 1: _jtframe_mister_fastio_ turns each 16-bit download word into two byte writes and joins two bytes into one word for uploads (NVRAM saves), so the rest of JTFRAME keeps the 8-bit interface.
+ 
+ The measured speed for data transfers in MiSTer is about 1.2MHz (800ns) per request. If **JTFRAME_MR_FASTIO** is set, each request is 16-bit words, otherwise, 8 bits.
+ 
+diff --git a/modules/jtframe/hdl/inc/game_sdram.v b/modules/jtframe/hdl/inc/game_sdram.v
+index b930b5878..cdbef224c 100644
+--- a/modules/jtframe/hdl/inc/game_sdram.v
++++ b/modules/jtframe/hdl/inc/game_sdram.v
+@@ -292,6 +292,7 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
+     .ioctl_wr     ( ioctl_wr       ), `endif
+     .ioctl_ram    ( ioctl_ram      ),
+     .ioctl_cart   ( ioctl_cart     ),
++    .ioctl_rom    ( ioctl_rom      ),
+     // Debug
+     .debug_bus    ( debug_bus      ),
+     .debug_view   ( debug_view     ),
+diff --git a/modules/jtframe/hdl/inc/ports.v b/modules/jtframe/hdl/inc/ports.v
+index 9f8e5398c..bd51d7fed 100644
+--- a/modules/jtframe/hdl/inc/ports.v
++++ b/modules/jtframe/hdl/inc/ports.v
+@@ -65,6 +65,7 @@
+     input    [ 7:0] ioctl_dout, `endif
+     input           ioctl_ram,
+     input           ioctl_cart,
++    input           ioctl_rom,
+     // Explicit ports
+ {{- range .Ports}}
+     {{if .Input}}input{{else}}output{{end}}   {{if .MSB}}[{{.MSB}}:{{.LSB}}]{{end}} {{.Name}},{{end }}
+diff --git a/modules/jtframe/hdl/jtframe_board_sdram.v b/modules/jtframe/hdl/jtframe_board_sdram.v
+index 085a09261..dd72fb0b8 100644
+--- a/modules/jtframe/hdl/jtframe_board_sdram.v
++++ b/modules/jtframe/hdl/jtframe_board_sdram.v
+@@ -238,6 +238,8 @@ jtframe_frac_cen #(.WC(`JTFRAME_RFSH_WC)) u_rfsh(
+         .BA2_WEN      ( 1             ), `endif
+ `ifdef JTFRAME_BA3_WEN
+         .BA3_WEN      ( 1             ), `endif
++`ifdef JTFRAME_DWNLD_BURST
++        .PROG_BURST   ( 1             ), `endif
+         .PROG_LEN     ( PROG_LEN      ),
+         .MISTER       ( MISTER        ),
+         .HF           ( HF            ),
+diff --git a/modules/jtframe/hdl/sdram/jtframe_dwnld.v b/modules/jtframe/hdl/sdram/jtframe_dwnld.v
+index b8083a6f9..f6f1dbb36 100644
+--- a/modules/jtframe/hdl/sdram/jtframe_dwnld.v
++++ b/modules/jtframe/hdl/sdram/jtframe_dwnld.v
+@@ -22,7 +22,18 @@ module jtframe_dwnld #(
+     parameter        BALUT_LEN = 5,
+     parameter        BALUT_REVERSE = 1, // header offset bytes are low/high when set
+     parameter        LUTSH     = 0, // bit shift to apply to ioctl_addr for BALUT comparisons
+-    parameter        XL        = 0
++    parameter        XL        = 0,
++    // PAIR=1 (JTFRAME_DWNLD_PAIR): the two bytes of each 16-bit SDRAM word go out in one write instead of two.
++    // The first byte of a word is held until its partner arrives. Needs an even header, even bank starts
++    // and an even ROM length; jtframe_mister_dwnld then skips the SDRAM wait for the held bytes.
++    parameter        PAIR      = `ifdef JTFRAME_DWNLD_PAIR 1 `else 0 `endif,
++    // BURST=1 (JTFRAME_DWNLD_BURST): bytes may come one per clock. Words are paired as with PAIR (PAIR has
++    // no effect then) and queued for the SDRAM; jtframe_mister_dwnld never has more bytes in flight than the
++    // queue holds. A byte still without its partner after 15 clocks with no input is written alone.
++    // PROM bytes go through the queue too: each stays on prog_addr/prog_data for eight clocks with prom_we
++    // high, as a level like in the byte-by-byte download (loaders on slower clocks may write a clock late).
++    // After each odd PROM byte a write with both bytes masked hands the two bytes' credits back (its ack).
++    parameter        BURST     = `ifdef JTFRAME_DWNLD_BURST 1 `else 0 `endif
+ )(
+     input                clk,
+     input                ioctl_rom,
+@@ -63,7 +74,8 @@ reg  [ 7:0] data_out;
+ wire        is_prom;
+ reg  [26:0] part_addr, nohdr_addr;
+ 
+-assign prog_data = {2{data_out}};
++reg  [15:0] data16;
++assign prog_data = (PAIR!=0 || BURST!=0) ? data16 : {2{data_out}};
+ assign prog_rd   = 0;
+ 
+ function [15:0] header_word;
+@@ -103,6 +115,10 @@ reg [SDRAMW-1:1] pend_addr;
+ reg [ 7:0] pend_data;
+ reg [ 1:0] pend_mask, pend_ba;
+ reg        pend_we;
++reg        hold_v=0;
++reg [SDRAMW-1:1] hold_addr;
++reg [ 7:0] hold_data;
++reg [ 1:0] hold_mask, hold_ba;
+ reg        ioctl_wr1=0, ioctl_rom1=0, header1=0;
+ reg [ 7:0] ioctl_dout1=0;
+ reg [26:0] part_addr1=0;
+@@ -114,6 +130,25 @@ wire [SDRAMW-1:1] nx_prog_addr = XL ? { bank[2], eff_addr[SDRAMW-2:1] } : eff_ad
+ wire [ 1:0] nx_prog_mask = (eff_addr[0]^SWAB[0]) ? 2'b10 : 2'b01;
+ wire [ 1:0] nx_prog_ba   = bank[1:0];
+ wire        sdram_pending = prog_we && !sdram_ack;
++wire        rom_start = ioctl_rom && !ioctl_rom1;
++
++localparam QW=5, EW=SDRAMW-1, PROMHOLD=3'd7;
++reg  [EW+20:0] qmem[0:(1<<QW)-1];   // PROM flag, bank, mask, data, address
++reg  [ QW-1:0] q_wr=0, q_rd=0;
++reg  [   QW:0] q_n=0;
++reg  [EW+20:0] q_in;
++reg            q_push;
++wire [EW+20:0] q_head = qmem[q_rd];
++reg            a_v=0, a_prom=0, a_odd=0, b_v=0, o_v=0, o_prom=0, o_odd=0, o_wr=0;
++reg  [ EW-1:0] a_addr=0, b_addr=0;
++reg  [    7:0] a_data=0, b_data=0;
++reg  [    1:0] a_mask=0, a_ba=0, b_mask=0, b_ba=0;
++reg  [    2:0] o_cnt=0;
++reg  [    3:0] b_idle=0;
++wire           b_pair = b_v && a_odd && b_addr==a_addr && b_ba==a_ba;
++wire           b_flush= b_v && !a_v && &b_idle;
++wire           o_done = o_v && (o_prom ? o_cnt==0 && (!o_odd || (o_wr && sdram_ack)) : sdram_ack);
++wire           q_pop  = q_n!=0 && (!o_v || o_done);
+ 
+ initial begin
+     prog_addr = 0;
+@@ -195,13 +230,75 @@ generate
+ endgenerate
+ 
+ always @(posedge clk) begin
+-    if( use_ioctl_wr && use_ioctl_rom && !use_header ) begin
++    if( BURST!=0 ) begin
++        if( o_v && o_cnt!=0 ) o_cnt <= o_cnt-3'd1;
++        if( o_v && o_prom && o_odd && o_cnt==0 && !o_wr ) begin
++            o_wr      <= 1;
++            prog_we   <= 1;
++            prog_mask <= 2'b11;
++        end
++        if( o_done ) begin
++            o_v     <= 0;
++            prog_we <= 0;
++            prom_we <= 0;
++        end
++        if( rom_start ) begin
++            o_v     <= 0;
++            prog_we <= 0;
++            prom_we <= 0;
++        end else if( q_pop ) begin
++            o_v       <= 1;
++            o_prom    <= q_head[EW+20];
++            o_odd     <= q_head[0];
++            o_wr      <= 0;
++            o_cnt     <= PROMHOLD;
++            prog_addr <= q_head[EW-1:0];
++            data16    <= q_head[EW+15:EW];
++            prog_mask <= q_head[EW+17:EW+16];
++            if( !q_head[EW+20] ) prog_ba <= q_head[EW+19:EW+18];
++            prog_we   <= !q_head[EW+20];
++            prom_we   <=  q_head[EW+20];
++        end
++    end else if( use_ioctl_wr && use_ioctl_rom && !use_header ) begin
+         if( is_prom ) begin
+             prog_addr <= use_part_addr[SDRAMW-2:0];
+             prom_we   <= 1;
+             prog_we   <= 0;
+             data_out  <= use_ioctl_dout;
++            data16    <= {2{use_ioctl_dout}};
+             prog_mask <= nx_prog_mask;
++        end else if( PAIR && !eff_addr[0] && !hold_v ) begin
++            // first byte of a 16-bit word: kept until its partner comes
++            hold_v    <= 1;
++            hold_addr <= nx_prog_addr;
++            hold_data <= use_ioctl_dout;
++            hold_mask <= nx_prog_mask;
++            hold_ba   <= nx_prog_ba;
++            prom_we   <= 0;
++            if( prog_we && sdram_ack && !pend_we ) prog_we <= 0;
++        end else if( PAIR && hold_v && !sdram_pending ) begin
++            if( eff_addr[0] && hold_addr==nx_prog_addr && hold_ba==nx_prog_ba ) begin
++                // second byte: both bytes in one write (the held byte keeps its own lane)
++                prog_addr <= nx_prog_addr;
++                prog_ba   <= nx_prog_ba;
++                prog_mask <= 2'b00;
++                data16    <= hold_mask[0] ? { hold_data, use_ioctl_dout } : { use_ioctl_dout, hold_data };
++                data_out  <= use_ioctl_dout;
++                hold_v    <= 0;
++            end else begin
++                // no partner (not expected with even starts): write the held byte alone, hold this one
++                prog_addr <= hold_addr;
++                prog_ba   <= hold_ba;
++                prog_mask <= hold_mask;
++                data16    <= {2{hold_data}};
++                data_out  <= hold_data;
++                hold_addr <= nx_prog_addr;
++                hold_data <= use_ioctl_dout;
++                hold_mask <= nx_prog_mask;
++                hold_ba   <= nx_prog_ba;
++            end
++            prog_we   <= 1;
++            prom_we   <= 0;
+         end else if( sdram_pending ) begin
+             pend_addr <= nx_prog_addr;
+             pend_data <= use_ioctl_dout;
+@@ -212,6 +309,7 @@ always @(posedge clk) begin
+         end else if( prog_we && sdram_ack && pend_we ) begin
+             prog_addr <= pend_addr;
+             data_out  <= pend_data;
++            data16    <= {2{pend_data}};
+             prog_mask <= pend_mask;
+             prog_ba   <= pend_ba;
+             prog_we   <= 1;
+@@ -224,6 +322,7 @@ always @(posedge clk) begin
+         end else begin
+             prog_addr <= nx_prog_addr;
+             data_out  <= use_ioctl_dout;
++            data16    <= {2{use_ioctl_dout}};
+             prog_mask <= nx_prog_mask;
+             prog_ba   <= nx_prog_ba;
+             prom_we   <= 0;
+@@ -234,6 +333,7 @@ always @(posedge clk) begin
+             if( pend_we ) begin
+                 prog_addr <= pend_addr;
+                 data_out  <= pend_data;
++                data16    <= {2{pend_data}};
+                 prog_mask <= pend_mask;
+                 prog_ba   <= pend_ba;
+                 prog_we   <= 1;
+@@ -253,6 +353,82 @@ always @(posedge clk) begin
+             end
+         end
+     end
++    if( PAIR!=0 && rom_start ) hold_v <= 0;
++end
++
++// BURST: one byte per clock in, at most one queue entry per clock
++always @(posedge clk) begin
++    a_v    <= use_ioctl_wr && use_ioctl_rom && !use_header;
++    a_prom <= is_prom;
++    a_odd  <= eff_addr[0];
++    a_addr <= is_prom ? use_part_addr[EW-1:0] : nx_prog_addr;
++    a_mask <= nx_prog_mask;
++    a_ba   <= nx_prog_ba;
++    a_data <= use_ioctl_dout;
++end
++
++always @(*) begin
++    q_push = 0;
++    q_in   = { 1'b0, a_ba, a_mask, {2{a_data}}, a_addr };
++    if( a_v ) begin
++        if( a_prom ) begin
++            q_push = 1;
++            q_in[EW+20] = 1;
++        end else if( b_pair ) begin
++            q_push = 1;
++            q_in   = { 1'b0, a_ba, 2'b00, b_mask[0] ? { b_data, a_data } : { a_data, b_data }, a_addr };
++        end else if( b_v ) begin
++            q_push = 1;
++            q_in   = { 1'b0, b_ba, b_mask, {2{b_data}}, b_addr };
++        end else if( a_odd ) begin
++            q_push = 1;
++        end
++    end else if( b_flush ) begin
++        q_push = 1;
++        q_in   = { 1'b0, b_ba, b_mask, {2{b_data}}, b_addr };
++    end
++end
++
++always @(posedge clk) begin
++    if( a_v && !a_prom ) begin
++        if( b_pair ) begin
++            b_v <= 0;
++        end else if( b_v || !a_odd ) begin
++            b_v    <= 1;
++            b_addr <= a_addr;
++            b_data <= a_data;
++            b_mask <= a_mask;
++            b_ba   <= a_ba;
++        end
++    end
++    if( b_flush ) b_v <= 0;
++    b_idle <= a_v || !b_v ? 4'd0 : b_idle+4'd1;
++    if( q_push ) begin
++        qmem[q_wr] <= q_in;
++        q_wr <= q_wr+1'd1;
++    end
++    if( q_pop ) q_rd <= q_rd+1'd1;
++    if( q_push!=q_pop ) q_n <= q_push ? q_n+1'd1 : q_n-1'd1;
++    if( rom_start ) begin
++        b_v  <= 0;
++        q_wr <= 0;
++        q_rd <= 0;
++        q_n  <= 0;
++    end
++end
++
++`ifdef SIMULATION
++always @(posedge clk) if( BURST!=0 && q_push && !q_pop && q_n[QW] ) begin
++    $display("ERROR: %m download queue overflow");
++    $finish;
+ end
+ 
++reg [3:0] end_chk=0;
++always @(posedge clk) begin
++    end_chk <= ioctl_rom1 && !ioctl_rom ? 4'd1 : end_chk!=0 ? end_chk+4'd1 : 4'd0;
++    if( &end_chk && ((BURST!=0 && b_v) || (BURST==0 && PAIR!=0 && hold_v)) )
++        $display("ERROR: %m the download ended on the first byte of a 16-bit word, which is not written (odd length)");
++end
++`endif
++
+ endmodule
+diff --git a/modules/jtframe/hdl/sdram/jtframe_sdram64.v b/modules/jtframe/hdl/sdram/jtframe_sdram64.v
+index eeee947d5..7c73fabf4 100644
+--- a/modules/jtframe/hdl/sdram/jtframe_sdram64.v
++++ b/modules/jtframe/hdl/sdram/jtframe_sdram64.v
+@@ -29,8 +29,9 @@ module jtframe_sdram64 #(
+ 
+               MISTER =1,     // shorts dqm to address bus 12/11 signals
+               RFSHCNT=9,     // 8192 every 64ms or 1 every 7.8us ~ 8.2 per line (15kHz)
+-              BAPRIO =1      // Bank requests are handled with higher priority to bank 0
++              BAPRIO =1,     // Bank requests are handled with higher priority to bank 0
+                              // and lower to to bank 3
++              PROG_BURST=0   // 1: download writes keep the row open (JTFRAME_DWNLD_BURST)
+ )(
+     input               rst,
+     input               clk,
+@@ -282,56 +283,90 @@ jtframe_sdram64_rfsh #(.HF(HF),.RFSHCNT(RFSHCNT)) u_rfsh(
+     .sdram_a    ( rfsh_a    )
+ );
+ 
+-jtframe_sdram64_bank #(
+-    .AW       ( AW      ),
+-    .HF       ( HF      ),
+-    .SHIFTED  ( SHIFTED ),
+-    .BALEN    ( PROG_LEN),
+-    .BURSTLEN ( BURSTLEN),
+-    // The programmer always precharges all banks
+-    // at the beginning of the operation
+-    .AUTOPRECH    ( 1   ),
+-    .PRECHARGE_ALL( 1   )
+-) u_prog(
+-    .rst        ( prog_rst   ),
+-    .clk        ( clk        ),
+-    .help       ( 1'b0       ),
+-
+-    // requests
+-    .addr       ( prog_addr  ),
+-    .rd         ( prog_rd    ),
+-    .wr         ( prog_wr    ),
+-
+-    .ack        ( pre_ack    ),
+-    .dst        ( pre_dst    ),    // data starts
+-    .dbusy      (            ), // prog works alone
+-    .all_dbusy  ( 1'd0       ),
+-    .idle       ( idle[4]    ),
+-
+-    .dbusy64    ( prog_busy  ),
+-    .all_dbusy64( 1'd0       ),
+-
+-    .post_act   (            ),
+-    .all_act    ( 1'd0       ),
+-
+-    .dqm_busy   (            ),
+-    .all_dqm    ( 1'd0       ),
+-    .wr_busy    ( wr_busy[4] ),
+-
+-    .row        (            ),
+-    .match      ( 1'b0       ),
+-
+-    .dok        ( pre_dok    ),
+-    .rdy        ( pre_rdy    ),
+-    .set_prech  ( 1'd0       ),
+-
+-    // SDRAM interface
+-    .br         ( pre_br     ), // bus request
+-    .bg         ( prog_bg    ), // bus grant
+-
+-    .sdram_a    ( pre_a      ),
+-    .cmd        ( pre_cmd    )
+-);
++generate
++    if( PROG_BURST ) begin
++        assign pre_dok   = 0;
++        assign prog_busy = 0;
++        jtframe_sdram64_dwnld #(.AW(AW)) u_prog(
++            .rst        ( prog_rst   ),
++            .clk        ( clk        ),
++
++            .addr       ( prog_addr  ),
++            .ba         ( prog_ba    ),
++            .wr         ( prog_wr    ),
++            .ack        ( pre_ack    ),
++            .rdy        ( pre_rdy    ),
++            .dst        ( pre_dst    ),
++
++            .br         ( pre_br     ),
++            .bg         ( prog_bg    ),
++            .rfsh_br    ( rfsh_br    ),
++            .set_prech  ( rfsh_bg    ),
++            .idle       ( idle[4]    ),
++            .wr_busy    ( wr_busy[4] ),
++
++            .sdram_a    ( pre_a      ),
++            .cmd        ( pre_cmd    )
++        );
++`ifdef SIMULATION
++        always @(posedge clk) if( prog_en && prog_rd ) begin
++            $display("ERROR: %m prog_rd is not supported with PROG_BURST (JTFRAME_DWNLD_BURST)");
++            $finish;
++        end
++`endif
++    end else begin
++    jtframe_sdram64_bank #(
++        .AW       ( AW      ),
++        .HF       ( HF      ),
++        .SHIFTED  ( SHIFTED ),
++        .BALEN    ( PROG_LEN),
++        .BURSTLEN ( BURSTLEN),
++        // The programmer always precharges all banks
++        // at the beginning of the operation
++        .AUTOPRECH    ( 1   ),
++        .PRECHARGE_ALL( 1   )
++    ) u_prog(
++        .rst        ( prog_rst   ),
++        .clk        ( clk        ),
++        .help       ( 1'b0       ),
++
++        // requests
++        .addr       ( prog_addr  ),
++        .rd         ( prog_rd    ),
++        .wr         ( prog_wr    ),
++
++        .ack        ( pre_ack    ),
++        .dst        ( pre_dst    ),    // data starts
++        .dbusy      (            ), // prog works alone
++        .all_dbusy  ( 1'd0       ),
++        .idle       ( idle[4]    ),
++
++        .dbusy64    ( prog_busy  ),
++        .all_dbusy64( 1'd0       ),
++
++        .post_act   (            ),
++        .all_act    ( 1'd0       ),
++
++        .dqm_busy   (            ),
++        .all_dqm    ( 1'd0       ),
++        .wr_busy    ( wr_busy[4] ),
++
++        .row        (            ),
++        .match      ( 1'b0       ),
++
++        .dok        ( pre_dok    ),
++        .rdy        ( pre_rdy    ),
++        .set_prech  ( 1'd0       ),
++
++        // SDRAM interface
++        .br         ( pre_br     ), // bus request
++        .bg         ( prog_bg    ), // bus grant
++
++        .sdram_a    ( pre_a      ),
++        .cmd        ( pre_cmd    )
++    );
++    end
++endgenerate
+ 
+ jtframe_sdram64_bank #(
+     .AW       ( AW            ),
+@@ -523,7 +558,7 @@ jtframe_sdram64_bank #(
+ );
+ 
+ always @(*) begin
+-    rfsh_bg = &idle && (noreq | help) && rfsh_br;
++    rfsh_bg = &idle && (noreq | help | (PROG_BURST!=0 && prog_en)) && rfsh_br;
+     prog_bg = pre_br & !rfshing;
+     if( rfshing ) begin
+         bg=0;
+diff --git a/modules/jtframe/hdl/sdram/jtframe_sdram64_dwnld.v b/modules/jtframe/hdl/sdram/jtframe_sdram64_dwnld.v
+new file mode 100644
+index 000000000..c32e3e5f1
+--- /dev/null
++++ b/modules/jtframe/hdl/sdram/jtframe_sdram64_dwnld.v
+@@ -0,0 +1,108 @@
++/* SPDX-FileCopyrightText: 2026 Chris Watson
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ * Date: 14-11-2026 */
++
++// ROM download writer for jtframe_sdram64 (JTFRAME_DWNLD_BURST). It replaces the
++// programming bank: writes only, the row stays open while consecutive words fall in it.
++// Refresh takes the bus between words, but only after one word has been written since
++// the last refresh, so the download always moves. Times in clocks, for up to 100 MHz.
++module jtframe_sdram64_dwnld #(
++    parameter AW=22
++)(
++    input               rst,
++    input               clk,
++
++    input      [AW-1:0] addr,
++    input        [ 1:0] ba,
++    input               wr,
++    output              ack,
++    output              rdy,
++    output              dst,
++
++    output              br,
++    input               bg,
++    input               rfsh_br,
++    input               set_prech,
++    output              idle,
++    output              wr_busy,
++
++    output reg  [12:0]  sdram_a,
++    output reg  [ 3:0]  cmd
++);
++
++localparam ROW=13,
++           TRCD=2, TRP=2, TWR=2, TRAS=5, TRC=6;
++
++//                             /CS /RAS /CAS /WE
++localparam CMD_PRECHARGE   = 4'b0___0____1____0,
++           CMD_ACTIVE      = 4'b0___0____1____1,
++           CMD_WRITE       = 4'b0___1____0____0,
++           CMD_NOP         = 4'b0___1____1____1;
++
++wire [ROW-1:0] addr_row = AW==22 ? addr[AW-1:AW-ROW] : addr[AW-2:AW-1-ROW];
++reg  [ROW-1:0] row;
++reg  [    1:0] row_ba;
++reg            act, clean, acked, wrote;
++reg  [    2:0] t_wr, t_act, t_pre;
++wire           hit, block;
++reg            do_wr, do_pre, do_act;
++
++assign hit     = act && row==addr_row && row_ba==ba;
++assign br      = wr && !acked;
++assign block   = !bg || (rfsh_br && wrote);
++assign ack     = do_wr;
++assign rdy     = do_wr;
++assign dst     = do_wr;
++assign wr_busy = do_wr;
++assign idle    = (!br || wrote) && t_wr>=1 && t_act>=TRAS-1;
++
++always @(*) begin
++    do_wr  = !block && clean && hit && t_act>=TRCD;
++    do_pre = !block && (!clean || (act && !hit)) && t_wr>=TWR && t_act>=TRAS;
++    do_act = !block && clean && !act && t_pre>=TRP && t_act>=TRC;
++    cmd    = do_wr ? CMD_WRITE : do_pre ? CMD_PRECHARGE : do_act ? CMD_ACTIVE : CMD_NOP;
++    sdram_a[12:11] = addr_row[12:11];
++    sdram_a[10:0]  = do_act ? addr_row[10:0] : { do_pre, addr[AW-1], addr[8:0] };
++end
++
++always @(posedge clk) begin
++    if( rst ) begin
++        act   <= 0;
++        clean <= 0;
++        acked <= 0;
++        wrote <= 0;
++        row   <= 0;
++        row_ba<= 0;
++        t_wr  <= 3'd7;
++        t_act <= 3'd7;
++        t_pre <= 3'd7;
++    end else begin
++        acked <= do_wr;
++        if( t_wr !=3'd7 ) t_wr  <= t_wr +3'd1;
++        if( t_act!=3'd7 ) t_act <= t_act+3'd1;
++        if( t_pre!=3'd7 ) t_pre <= t_pre+3'd1;
++        if( do_wr ) begin
++            t_wr  <= 0;
++            wrote <= 1;
++        end
++        if( do_pre ) begin
++            act   <= 0;
++            clean <= 1;
++            t_pre <= 0;
++        end
++        if( do_act ) begin
++            act   <= 1;
++            row   <= addr_row;
++            row_ba<= ba;
++            t_act <= 0;
++        end
++        if( set_prech ) begin
++            act   <= 0;
++            clean <= 1;
++            wrote <= 0;
++            t_pre <= 0;
++        end
++    end
++end
++
++endmodule
+diff --git a/modules/jtframe/src/jtframe/mra/buttons_test.go b/modules/jtframe/src/jtframe/mra/buttons_test.go
+index b27d476db..56d43c3d0 100644
+--- a/modules/jtframe/src/jtframe/mra/buttons_test.go
++++ b/modules/jtframe/src/jtframe/mra/buttons_test.go
+@@ -1,6 +1,8 @@
+ package mra
+ 
+ import (
++	"os"
++	"path/filepath"
+ 	"strings"
+ 	"testing"
+ 
+@@ -29,7 +31,7 @@ func Test_button_defaults(t *testing.T) {
+ 			root := MakeNode("misterromdescription")
+ 			make_buttons(&root, &MachineXML{Name: "test"}, cfg, Args{})
+ 			b := root.GetNode("buttons")
+-			if got := b.GetAttr("names"); got != tc.want_names+",Start,Coin,Core credits,Test,Service" { t.Errorf("names: %s", got) }
++			if got := b.GetAttr("names"); got != tc.want_names+",Start,Coin,Pause,Test,Service" { t.Errorf("names: %s", got) }
+ 			if got := b.GetAttr("default"); got != tc.want_pad+",Start,Select,L2,R2,L3" { t.Errorf("default: %s", got) }
+ 			if got := b.GetAttr("count"); got != tc.count { t.Errorf("count: %s", got) }
+ 		})
+@@ -73,7 +75,7 @@ names=[{names=""}]`, "Shot,Jump"},
+ 		cfg.Buttons.Core = 2
+ 		root := MakeNode("misterromdescription")
+ 		make_buttons(&root, &MachineXML{Name:"test"}, cfg, Args{})
+-		if got := root.GetNode("buttons").GetAttr("names"); got != tc.names+",Start,Coin,Core credits,Test,Service" { t.Errorf("names: %s", got) }
++		if got := root.GetNode("buttons").GetAttr("names"); got != tc.names+",Start,Coin,Pause,Test,Service" { t.Errorf("names: %s", got) }
+ 	}
+ }
+ 
+@@ -100,7 +102,7 @@ func Test_button_command_override(t *testing.T) {
+ 	root := MakeNode("misterromdescription")
+ 	make_buttons(&root, &MachineXML{Name: "test"}, cfg, Args{Buttons: "One,Two,Three"})
+ 	b := root.GetNode("buttons")
+-	if b.GetAttr("names") != "One,Two,Three,Start,Coin,Core credits,Test,Service" || b.GetAttr("default") != "A,B,X,Start,Select,L2,R2,L3" {
++	if b.GetAttr("names") != "One,Two,Three,Start,Coin,Pause,Test,Service" || b.GetAttr("default") != "A,B,X,Start,Select,L2,R2,L3" {
+ 		t.Fatal("command-line buttons did not replace the configured names and map")
+ 	}
+ }
+@@ -113,3 +115,26 @@ names=[{names="`+names+`", map="`+mapping+`"}]`))
+ 	cfg.Buttons.Core = core
+ 	return cfg
+ }
++
++func Test_button_pause_name(t *testing.T) {
++	root_dir := t.TempDir()
++	t.Setenv("JTROOT", root_dir)
++	cfgdir := filepath.Join(root_dir, "cores", "withmsg", "cfg")
++	if e := os.MkdirAll(cfgdir, 0o755); e != nil {
++		t.Fatal(e)
++	}
++	if e := os.WriteFile(filepath.Join(cfgdir, "msg"), []byte("credits\n"), 0o644); e != nil {
++		t.Fatal(e)
++	}
++	cfg := button_test_cfg(t, "Shot,Jump", "", 2)
++	for _, tc := range []struct{ core, want string }{
++		{"withmsg", "Shot,Jump,Start,Coin,Core credits,Test,Service"},
++		{"nomsg", "Shot,Jump,Start,Coin,Pause,Test,Service"},
++	} {
++		root := MakeNode("misterromdescription")
++		make_buttons(&root, &MachineXML{Name: "test"}, cfg, Args{Core: tc.core})
++		if got := root.GetNode("buttons").GetAttr("names"); got != tc.want {
++			t.Errorf("%s: names %s, want %s", tc.core, got, tc.want)
++		}
++	}
++}
+diff --git a/modules/jtframe/src/jtframe/mra/header.go b/modules/jtframe/src/jtframe/mra/header.go
+index 2b5234c67..df0ae3786 100644
+--- a/modules/jtframe/src/jtframe/mra/header.go
++++ b/modules/jtframe/src/jtframe/mra/header.go
+@@ -152,7 +152,8 @@ func (cfg HeaderCfg) bank_offset(headbytes []byte, reg_offsets map[string]int) {
+ 		offset, ok := reg_offsets[r]
+ 		if !ok {
+ 			unknown_regions = append(unknown_regions, r)
+-			offset = 0
++			// FFFF: never reached, so a missing last region (e.g. no PROM) does not take the whole ROM
++			offset = 0xffff << cfg.Offset.Bits
+ 		}
+ 		cfg.set_offset(headbytes, pos, cfg.Offset.Reverse, cfg.Offset.Bits, offset)
+ 		pos += 2
+@@ -162,7 +163,7 @@ func (cfg HeaderCfg) bank_offset(headbytes []byte, reg_offsets map[string]int) {
+ 		for _, uk := range unknown_regions {
+ 			fmt.Printf(" %s", uk)
+ 		}
+-		fmt.Printf(". Offset set to zero in the header\n")
++		fmt.Printf(". Offset set to FFFF in the header\n")
+ 	}
+ }
+ 
+diff --git a/modules/jtframe/src/jtframe/mra/mame2mra.go b/modules/jtframe/src/jtframe/mra/mame2mra.go
+index 42ed92656..aafe4093d 100644
+--- a/modules/jtframe/src/jtframe/mra/mame2mra.go
++++ b/modules/jtframe/src/jtframe/mra/mame2mra.go
+@@ -843,7 +843,11 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
+ 			pad += string(button_map[k]) + ","
+ 		}
+ 	}
+-	buttons_str += "Start,Coin,Core credits,Test,Service"
++	pause_name := "Pause"
++	if args.Core != "" && common.FileExists(common.ConfigFilePath(args.Core, "msg")) {
++		pause_name = "Core credits"
++	}
++	buttons_str += "Start,Coin," + pause_name + ",Test,Service"
+ 	n.AddAttr("names", buttons_str)
+ 	n.AddAttr("default", pad+"Start,Select,L2,R2,L3")
+ 	n.AddIntAttr("count", count)
+diff --git a/modules/jtframe/target/mister/cfg/files.yaml b/modules/jtframe/target/mister/cfg/files.yaml
+index 991e97a22..7c6267db7 100644
+--- a/modules/jtframe/target/mister/cfg/files.yaml
++++ b/modules/jtframe/target/mister/cfg/files.yaml
+@@ -3,6 +3,7 @@ jtframe/target/mister:
+     - jtframe_emu.sv
+     - jtframe_mister.sv
+     - jtframe_mister_dwnld.v
++    - jtframe_mister_fastio.v
+     - jtframe_mister_status.v
+     - jtframe_target_info.sv
+     - jtframe_mr_ddrmux.v
+diff --git a/modules/jtframe/target/mister/hdl/jtframe_mister.sv b/modules/jtframe/target/mister/hdl/jtframe_mister.sv
+index 9cd9143b1..b319c1478 100644
+--- a/modules/jtframe/target/mister/hdl/jtframe_mister.sv
++++ b/modules/jtframe/target/mister/hdl/jtframe_mister.sv
+@@ -278,6 +278,12 @@ wire        hps_download, hps_upload, hps_wr, hps_wait;
+ wire [15:0] hps_index;
+ wire [26:0] hps_addr;
+ wire [ 7:0] hps_dout;
++// hps_io file transfers as they come from the HPS: 16-bit words with JTFRAME_MR_FASTIO=1
++localparam  FASTIO = `JTFRAME_MR_FASTIO;
++localparam  FIODW  = FASTIO ? 15 : 7;
++wire        hpsw_wr;
++wire [26:0] hpsw_addr;
++wire [FIODW:0] hpsw_dout, hpsw_din;
+ 
+ // Screen rotation
+ wire [ 7:0] rot_burstcnt;
+@@ -446,6 +452,8 @@ jtframe_mister_dwnld u_dwnld(
+ 
+     .prog_we        ( prog_we        ),
+     .prog_rdy       ( prog_rdy       ),
++    .prog_ack       ( prog_ack       ),
++    .prog_mask      ( prog_mask      ),
+     .ioctl_rom      ( ioctl_rom      ),
+     .dwnld_busy     ( dwnld_busy     ),
+ 
+@@ -541,6 +549,20 @@ wire [127:0] status_full;   // CRT filter: 65:64; height: 69:67; bit 66 is free
+ assign status = status_full[63:0];
+ `endif
+ 
++// 16-bit hps_io transfers to the 8-bit interface used by the rest of JTFRAME
++jtframe_mister_fastio #(.WIDE(FASTIO)) u_fastio(
++    .clk        ( clk_rom       ),
++    .hpsw_upload( hps_upload    ),
++    .hpsw_wr    ( hpsw_wr       ),
++    .hpsw_addr  ( hpsw_addr     ),
++    .hpsw_dout  ( hpsw_dout     ),
++    .hpsw_din   ( hpsw_din      ),
++    .hps_wr     ( hps_wr        ),
++    .hps_addr   ( hps_addr      ),
++    .hps_dout   ( hps_dout      ),
++    .hps_din    ( hps_din       )
++);
++
+ hps_io #(
+     .STRLEN(1024),
+     .PS2DIV(32),.WIDE(`JTFRAME_MR_FASTIO),.BLKSZ(1)
+@@ -562,10 +584,10 @@ hps_io #(
+     .video_rotated   ( video_rotated  ),
+ 
+     .ioctl_download  ( hps_download   ),
+-    .ioctl_wr        ( hps_wr         ),
+-    .ioctl_addr      ( hps_addr       ),
+-    .ioctl_dout      ( hps_dout       ),
+-    .ioctl_din       ( hps_din        ),
++    .ioctl_wr        ( hpsw_wr        ),
++    .ioctl_addr      ( hpsw_addr      ),
++    .ioctl_dout      ( hpsw_dout      ),
++    .ioctl_din       ( hpsw_din       ),
+     .ioctl_index     ( hps_index      ),
+     .ioctl_wait      ( hps_wait     | sd_wait  ),
+     .ioctl_upload    ( hps_upload     ),
+diff --git a/modules/jtframe/target/mister/hdl/jtframe_mister_dwnld.v b/modules/jtframe/target/mister/hdl/jtframe_mister_dwnld.v
+index 566c133a7..5f771cd78 100644
+--- a/modules/jtframe/target/mister/hdl/jtframe_mister_dwnld.v
++++ b/modules/jtframe/target/mister/hdl/jtframe_mister_dwnld.v
+@@ -27,6 +27,8 @@ module jtframe_mister_dwnld(
+ 
+     input             prog_we,
+     input             prog_rdy,
++    input             prog_ack,
++    input      [ 1:0] prog_mask,
+ 
+     input             hps_download, // signal indicating an active download
+     input             hps_upload,   // signal indicating an active upload
+@@ -149,28 +151,47 @@ end
+ 
+ // DDR ROM download
+ localparam BW=7;
++localparam PAIR = `ifdef JTFRAME_DWNLD_PAIR 1 `else 0 `endif;
++// JTFRAME_DWNLD_BURST: one byte per clock while fewer than CREDITS bytes are waiting for the SDRAM
++// (jtframe_dwnld queues 2*CREDITS entries). The SDRAM ack of each write gives back the bytes it carries,
++// two for a masked write (it follows two PROM bytes); header bytes, which never reach jtframe_dwnld's
++// queue, are written off once nothing has moved for 128 clocks.
++localparam BURST = `ifdef JTFRAME_DWNLD_BURST 1 `else 0 `endif,
++           CREDITS = 5'd16;
++// JTFRAME_DWNLD_PREFETCH (with BURST): two pages in the buffer, the next DDR page is read while one is sent
++localparam PREF = (BURST!=0 && `ifdef JTFRAME_DWNLD_PREFETCH 1 `else 0 `endif) ? 1 : 0,
++           BAW  = BW+PREF;
+ reg  [BW-1:0] ddram_cnt;
+ reg  [  26:0] dump_cnt;
++reg  [   1:0] ld;
+ wire [  63:0] dump_data;
++wire [BW-1:0] dump_rd = dump_cnt[BW+2:3] + { {BW-1{1'b0}}, BURST!=0 && ld[1] };
++wire [BAW-1:0] buf_wa, buf_ra;
+ reg  [  63:0] dump_ser;
+ reg           tx_start, tx_done;
+ reg           game_rom, game_cart;
+ wire          buffer_we;
+ 
+-jtframe_rpwp_ram #(.DW(64),.AW(BW)) u_buffer(
++jtframe_rpwp_ram #(.DW(64),.AW(BAW)) u_buffer(
+     .clk    ( clk        ),
+     // Port 0: write
+     .din    ( ddram_dout ),
+-    .wr_addr( ddram_cnt  ),
++    .wr_addr( buf_wa     ),
+     .we     ( buffer_we  ),
+     // Port 1: read
+-    .rd_addr( dump_cnt[BW+2:3]  ),
++    .rd_addr( buf_ra     ),
+     .dout   ( dump_data  )
+ );
+ 
+-reg        ddr_dwn, last_dwn, last_dwnbusy, wr_latch;
++reg        ddr_dwn, last_dwn, last_dwnbusy, wr_latch, ddram_wait;
+ reg        dump_we;
+ reg [26:0] ddr_len;
++reg [26:0] dump_addr, remain;
++reg [ 7:0] dump_byte;
++reg [ 4:0] cred;
++wire [4:0] cred_add, cred_ret;
++reg [ 6:0] stall;
++wire       burst_end = remain==0 && cred==0 && !dump_we && !ioctl_wr && !ddram_wait;
+ 
+ assign hps_wait = ddr_dwn;
+ assign is_rom   = hps_index[5:0]==IDX_ROM;
+@@ -182,8 +203,8 @@ assign is_nvram = hps_index[5:0]==IDX_NVRAM;
+ always @(posedge clk) begin
+     ioctl_wr   <= ddr_dwn ? dump_we :
+                              hps_wr && (game_rom || is_nvram);
+-    ioctl_dout <= ddr_dwn ? dump_ser[7:0] : hps_dout;
+-    ioctl_addr <= ddr_dwn ? dump_cnt :
++    ioctl_dout <= ddr_dwn ? (BURST!=0 ? dump_byte : dump_ser[7:0]) : hps_dout;
++    ioctl_addr <= ddr_dwn ? (BURST!=0 ? dump_addr : dump_cnt) :
+                  game_cart ? hps_addr + CART_OFFSET : hps_addr;
+ end
+ 
+@@ -224,7 +245,7 @@ always @(posedge clk, posedge rst) begin
+                 ddr_dwn  <= 1;
+             end
+         end
+-        if( !hps_download && last_dwnbusy && !dwnld_busy || (ddr_dwn && dump_cnt >= ddr_len)) begin
++        if( !hps_download && last_dwnbusy && !dwnld_busy || (ddr_dwn && (BURST!=0 ? burst_end : dump_cnt >= ddr_len))) begin
+             ioctl_rom  <= 0;
+             ddr_dwn    <= 0;
+         end
+@@ -243,7 +264,21 @@ assign ddram_addr = { 4'd3, ddram_page, {BW{1'b0}} };
+ assign buffer_we  = ddram_wait;
+ 
+ wire cnt_over = &ddram_cnt;
+-reg ddram_wait;
++reg [   1:0] queued;
++wire         pref_start = tx_done && !tx_start && queued!=0;
++wire         pref_done  = ddram_wait && ddram_dout_ready && cnt_over;
++wire         pref_fetch = { 1'b0, ddram_page, {BW+3{1'b0}} } < { 2'd0, ddr_len } &&
++                          ({1'b0,queued} + {2'd0, !tx_done || tx_start}) < 3'd2;
++
++generate
++    if( PREF!=0 ) begin
++        assign buf_wa = { ddram_page[0], ddram_cnt };
++        assign buf_ra = { dump_cnt[BW+3], dump_rd };
++    end else begin
++        assign buf_wa = ddram_cnt;
++        assign buf_ra = dump_rd;
++    end
++endgenerate
+ 
+ always @(posedge clk, posedge rst) begin
+     if( rst ) begin
+@@ -251,8 +286,28 @@ always @(posedge clk, posedge rst) begin
+         ddram_page <= 0;
+         ddram_wait <= 0;
+         tx_start   <= 0;
++        queued     <= 0;
+     end else if(!ddram_busy ) begin
+-        if( ddr_dwn  ) begin
++        if( ddr_dwn && PREF!=0 ) begin
++            tx_start <= pref_start;
++            if( pref_done != pref_start ) queued <= pref_done ? queued+2'd1 : queued-2'd1;
++            if( !ddram_wait ) begin
++                ddram_cnt <= 0;
++                if( pref_fetch ) begin
++                    ddram_rd   <= 1;
++                    ddram_wait <= 1;
++                end
++            end else begin
++                ddram_rd <= 0;
++                if( ddram_dout_ready ) begin
++                    ddram_cnt <= ddram_cnt + 1'b1;
++                    if( cnt_over ) begin
++                        ddram_wait <= 0;
++                        ddram_page <= ddram_page + 1'd1;
++                    end
++                end
++            end
++        end else if( ddr_dwn ) begin
+             if( !ddram_wait ) begin
+                 ddram_cnt  <= 0;
+                 tx_start   <= 0;
+@@ -275,6 +330,7 @@ always @(posedge clk, posedge rst) begin
+             ddram_rd   <= 0;
+             tx_start   <= 0;
+             ddram_wait <= 0;
++            queued     <= 0;
+         end
+     end
+ end
+@@ -283,6 +339,11 @@ reg [ 1:0] st;
+ reg        next_wr;
+ reg [ 5:0] timeout;
+ 
++wire send = !tx_done && !tx_start && ddr_dwn && ld[1] && remain!=0 && cred<CREDITS;
++
++assign cred_add = cred + {4'd0, send};
++assign cred_ret = !(prog_we && prog_ack) ? 5'd0 : (prog_mask==2'b01 || prog_mask==2'b10) ? 5'd1 : 5'd2;
++
+ // Send to core
+ always @(posedge clk, posedge rst) begin
+     if( rst ) begin
+@@ -292,6 +353,37 @@ always @(posedge clk, posedge rst) begin
+         dump_ser <= 64'd0;
+         st       <= 2'd0;
+         timeout  <= 5'd0;
++        remain   <= 27'd0;
++        cred     <= 5'd0;
++        stall    <= 7'd0;
++        ld       <= 2'd0;
++        dump_addr<= 27'd0;
++        dump_byte<= 8'd0;
++    end else if( BURST!=0 ) begin
++        if( !ddr_dwn ) remain <= hps_addr;
++        dump_we <= send;
++        cred    <= cred_add > cred_ret ? cred_add-cred_ret : 5'd0;
++        stall   <= (send || prog_we || cred==0) ? 7'd0 : stall+7'd1;
++        if( &stall ) cred <= {4'd0, send};
++        if( tx_start ) begin
++            tx_done <= 0;
++            ld      <= 2'd0;
++        end else if( !tx_done ) begin
++            if( !ld[1] ) begin
++                ld <= ld+2'd1;
++                if( ld[0] ) dump_ser <= dump_data;
++            end
++            if( send || (!ddr_dwn && ld[1]) ) begin
++                dump_cnt <= dump_cnt+1'd1;
++                dump_ser <= &dump_cnt[2:0] ? dump_data : dump_ser>>8;
++                if( &dump_cnt[BW+2:0] ) tx_done <= 1;
++            end
++            if( send ) begin
++                dump_byte <= dump_ser[7:0];
++                dump_addr <= dump_cnt;
++                remain    <= remain-1'd1;
++            end
++        end
+     end else begin
+         if( tx_start ) begin
+             tx_done <= 0;
+@@ -306,7 +398,8 @@ always @(posedge clk, posedge rst) begin
+             timeout <= st==2'd2 ? 5'd0 : (timeout+1'd1);
+             case( st )
+                 default: st <= st+1'd1;
+-                3: if( prog_rdy || (&timeout) ) begin
++                // JTFRAME_DWNLD_PAIR: even bytes are held by jtframe_dwnld (no SDRAM write), no wait
++                3: if( prog_rdy || (&timeout) || (PAIR!=0 && !dump_cnt[0]) ) begin
+                     dump_ser <= dump_ser>>8;
+                     dump_cnt <= dump_cnt+1'd1;
+                     st <= &dump_cnt[2:0] ? 2'd0 : 2'd1;
+diff --git a/modules/jtframe/target/mister/hdl/jtframe_mister_fastio.v b/modules/jtframe/target/mister/hdl/jtframe_mister_fastio.v
+new file mode 100644
+index 000000000..068bcbf8e
+--- /dev/null
++++ b/modules/jtframe/target/mister/hdl/jtframe_mister_fastio.v
+@@ -0,0 +1,105 @@
++/*  This file is part of JTFRAME.
++    JTFRAME program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    JTFRAME program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
++
++    Author: Chris Watson
++    Date: 14-11-2026 */
++
++// JTFRAME_MR_FASTIO=1 runs hps_io in WIDE mode: the HPS moves 16 bits per
++// transfer and ioctl_addr steps by 2. The rest of JTFRAME keeps its 8-bit
++// interface, so this module sits between the two:
++//  - download: the low byte goes out with the hps_io write (address A), the
++//    high byte GAP clocks later at A+1. The next word comes tens of clocks
++//    later (one SPI transfer, ~800 ns). Address and data stay at A+1 and the
++//    high byte until that next word, as hps_io holds them after a write:
++//    jtframe_ioctl_dump (NVRAM restore) takes the data a clock after the pulse.
++//  - upload (NVRAM save): the bytes at A and A+1 are read one after the other
++//    and offered to hps_io as one word, refreshed whenever A changes.
++// With WIDE=0 it is a plain connection.
++
++module jtframe_mister_fastio #(parameter
++    WIDE = 0,
++    GAP  = 4,   // clocks between the two byte writes of a word
++    RDLY = 6,   // clocks allowed for ioctl_din to follow the address on uploads
++    DW   = WIDE ? 15 : 7
++)(
++    input             clk,
++    // hps_io side
++    input             hpsw_upload,
++    input             hpsw_wr,
++    input      [26:0] hpsw_addr,
++    input      [DW:0] hpsw_dout,
++    output     [DW:0] hpsw_din,
++    // JTFRAME side, 8-bit
++    output            hps_wr,
++    output     [26:0] hps_addr,
++    output     [ 7:0] hps_dout,
++    input      [ 7:0] hps_din
++);
++
++generate
++    if( WIDE==0 ) begin : narrow
++        assign hps_wr   = hpsw_wr;
++        assign hps_addr = hpsw_addr;
++        assign hps_dout = hpsw_dout[7:0];
++        assign hpsw_din = hps_din;
++    end else begin : wide
++        reg        pend=0, hi_wr=0, hi_hold=0, rd_hi=0;
++        wire       hi_sel = !hpsw_wr && !hpsw_upload && (hi_wr || hi_hold);
++        reg [ 7:0] hi=0, rd_lo=0;
++        reg [15:0] din16=0;
++        reg [26:0] rd_addr=0;
++        reg [ 3:0] cnt=0, rcnt=0;
++
++        // second byte of a download word, or the odd byte of an upload word
++        assign hps_wr   = hpsw_wr | hi_wr;
++        assign hps_addr = (hi_sel | (hpsw_upload & rd_hi)) ? { hpsw_addr[26:1], 1'b1 } : hpsw_addr;
++        assign hps_dout = hi_sel ? hi : hpsw_dout[7:0];
++        assign hpsw_din = din16;
++
++        always @(posedge clk) begin
++            hi_wr <= 0;
++            if( hi_wr ) hi_hold <= 1;
++            if( hpsw_wr ) begin
++                hi_hold <= 0;
++                hi   <= hpsw_dout[15:8];
++                pend <= 1;
++                cnt  <= GAP[3:0];
++            end else if( pend ) begin
++                if( cnt!=0 ) cnt <= cnt - 4'd1;
++                else begin
++                    hi_wr <= 1;
++                    pend  <= 0;
++                end
++            end
++        end
++
++        always @(posedge clk) begin
++            if( !hpsw_upload || hpsw_addr!=rd_addr ) begin
++                rd_addr <= hpsw_addr;
++                rd_hi   <= 0;
++                rcnt    <= 0;
++            end else if( rcnt!=RDLY[3:0] ) begin
++                rcnt <= rcnt + 4'd1;
++            end else if( !rd_hi ) begin
++                rd_lo <= hps_din;
++                rd_hi <= 1;
++                rcnt  <= 0;
++            end else begin
++                din16 <= { hps_din, rd_lo };
++            end
++        end
++    end
++endgenerate
++
++endmodule
+diff --git a/modules/jtframe/target/mister/hdl/sys/osd.sv b/modules/jtframe/target/mister/hdl/sys/osd.sv
+index a9e116533..0bd15976f 100644
+--- a/modules/jtframe/target/mister/hdl/sys/osd.sv
++++ b/modules/jtframe/target/mister/hdl/sys/osd.sv
+@@ -12,6 +12,7 @@ module osd #(parameter NATIVE_PIXEL=0)
+     input         ce_in, // native pixel enable when NATIVE_PIXEL=1
+     input  [23:0] din,
+     input         de_in,
++    input         de_ref, // unstretched active window for OSD size and placement
+     input         vs_in,
+     input         hs_in,
+     output [23:0] dout,
+@@ -109,6 +110,7 @@ always@(posedge clk_sys) begin
+ end
+ 
+ wire ce_pix;
++wire de_geo = NATIVE_PIXEL ? de_in : de_ref;
+ wire [23:0] mix_din;
+ wire mix_de, mix_hs, mix_vs;
+ generate if (NATIVE_PIXEL) begin : NATIVE
+@@ -143,15 +145,15 @@ always @(posedge clk_video) begin
+     reg deD;
+ 
+     cnt <= cnt + 1'd1;
+-    deD <= de_in;
++    deD <= de_geo;
+ 
+     pixcnt <= pixcnt + 1'd1;
+     if(pixcnt == pixsz) pixcnt <= 0;
+     ce_auto <= !pixcnt;
+ 
+-    if(~deD && de_in) cnt <= 0;
++    if(~deD && de_geo) cnt <= 0;
+ 
+-    if(deD && ~de_in) begin
++    if(deD && ~de_geo) begin
+         pixsz  <= (((cnt+1'b1) >> (9-rot[0])) > 1) ? (((cnt+1'b1) >> (9-rot[0])) - 1'd1) : 22'd0;
+         pixcnt <= 0;
+     end
+@@ -215,7 +217,7 @@ always @(posedge clk_video) begin : GEOMETRY
+ 
+     if(ce_pix) begin
+ 
+-        deD <= de_in;
++        deD <= de_geo;
+         if(~&h_cnt) h_cnt <= h_cnt + 1'd1;
+ 
+         if(~&osd_hcnt)  osd_hcnt  <= osd_hcnt + 1'd1;
+@@ -234,10 +236,10 @@ always @(posedge clk_video) begin : GEOMETRY
+         if (osd_hcnt+1 == osd_w) osd_de[0] <= 0;
+ 
+         // falling edge of de
+-        if(!de_in && deD) dsp_width <= h_cnt[21:0];
++        if(!de_geo && deD) dsp_width <= h_cnt[21:0];
+ 
+         // rising edge of de
+-        if(de_in && !deD) begin
++        if(de_geo && !deD) begin
+             h_cnt <= 0;
+             v_cnt <= v_cnt + 1'd1;
+             h_osd_start <= info ? (rot[0] ? infoy : infox) :
+diff --git a/modules/jtframe/target/mister/hdl/sys/sys_top.v b/modules/jtframe/target/mister/hdl/sys/sys_top.v
+index a62fa3fdb..0f8a22b57 100644
+--- a/modules/jtframe/target/mister/hdl/sys/sys_top.v
++++ b/modules/jtframe/target/mister/hdl/sys/sys_top.v
+@@ -1196,6 +1196,7 @@ cyclonev_hps_interface_peripheral_i2c hdmi_i2c
+ 		.hs_in(hdmi_hs_mask),
+ 		.vs_in(hdmi_vs_mask),
+ 		.de_in(hdmi_de_mask),
++		.de_ref(hdmi_de_mask),
+ 
+ 		.dout(hdmi_data_osd),
+ 		.hs_out(hdmi_hs_osd),
+@@ -1404,37 +1405,8 @@ scanlines #(0) VGA_scanlines
+ // JTFRAME: analogue h-size. Inserted after the HDMI branch has already tapped
+ // the stream, so stretching only moves the DAC pixel clock. See
+ // $JTFRAME/hdl/video/jtframe_hretime.v
+-wire [23:0] vga_data_mix;
+-wire        vga_vs_mix, vga_hs_mix, vga_de_mix;
+-osd #(.NATIVE_PIXEL(1)) vga_osd
+-(
+-	.clk_sys(clk_sys),
+-
+-	.io_osd(io_osd_vga),
+-	.io_strobe(io_strobe),
+-	.io_din(io_din),
+-	.osd_status(osd_status),
+-
+-	.clk_video(clk_vid),
+-	.ce_in(vga_ce_sl),
+-	.din(vga_data_sl),
+-	.hs_in(vga_hs_sl),
+-	.vs_in(vga_vs_sl),
+-	.de_in(vga_de_sl),
+-
+-	.dout(vga_data_mix),
+-	.hs_out(vga_hs_mix),
+-	.vs_out(vga_vs_mix),
+-	.de_out(vga_de_mix)
+-);
+-
+-// Match the four clk_vid registers in the OSD RGB/sync/DE pipeline.
+-reg [3:0] vga_ce_pipe;
+-wire vga_ce_mix = vga_ce_pipe[3];
+-always @(posedge clk_vid) vga_ce_pipe <= {vga_ce_pipe[2:0], vga_ce_sl};
+-
+-wire [23:0] vga_data_osd;
+-wire        vga_hs_osd, vga_vs_osd, vga_de_osd;
++wire [23:0] vga_data_hz;
++wire        vga_hs_hz, vga_vs_hz, vga_de_hz;
+ wire [ 4:0] VGA_HSIZE;
+ // h-size only makes sense on a 15 kHz monitor, and the scandoubler doubles the
+ // pixel rate that JTFRAME_HSIZE_DIV describes
+@@ -1465,7 +1437,7 @@ jtframe_hretime #(
+ ) u_hretime
+ (
+ 	.clk(clk_vid),
+-	.ce_in(vga_ce_mix),
++	.ce_in(vga_ce_sl),
+ 	.enable(hsize_enable),
+ `ifdef JTFRAME_CRT480I
+ 	.div_alt(crt480i_on),
+@@ -1474,12 +1446,37 @@ jtframe_hretime #(
+ `endif
+ 	.scale(VGA_HSIZE[3:0]),
+ 
+-	.din(vga_data_mix),
+-	.hs_in(vga_hs_mix),
+-	.vs_in(vga_vs_mix),
+-	.de_in(vga_de_mix),
++	.din(vga_data_sl),
++	.hs_in(vga_hs_sl),
++	.vs_in(vga_vs_sl),
++	.de_in(vga_de_sl),
+ 
+ 	.ce_out(),
++	.dout(vga_data_hz),
++	.hs_out(vga_hs_hz),
++	.vs_out(vga_vs_hz),
++	.de_out(vga_de_hz)
++);
++
++wire [23:0] vga_data_osd;
++wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
++osd vga_osd
++(
++	.clk_sys(clk_sys),
++
++	.io_osd(io_osd_vga),
++	.io_strobe(io_strobe),
++	.io_din(io_din),
++	.osd_status(osd_status),
++
++	.clk_video(clk_vid),
++	.ce_in(1'b0),
++	.din(vga_data_hz),
++	.hs_in(vga_hs_hz),
++	.vs_in(vga_vs_hz),
++	.de_in(vga_de_hz),
++	.de_ref(vga_de_sl),
++
+ 	.dout(vga_data_osd),
+ 	.hs_out(vga_hs_osd),
+ 	.vs_out(vga_vs_osd),
+diff --git a/modules/jtframe/target/mister/ver/sys_top_platform/stubs.v b/modules/jtframe/target/mister/ver/sys_top_platform/stubs.v
+index 7bc1c1f42..90eb4850c 100644
+--- a/modules/jtframe/target/mister/ver/sys_top_platform/stubs.v
++++ b/modules/jtframe/target/mister/ver/sys_top_platform/stubs.v
+@@ -266,6 +266,7 @@ module osd #(parameter NATIVE_PIXEL=0) (
+     input hs_in,
+     input vs_in,
+     input de_in,
++    input de_ref,
+     input dout,
+     input hs_out,
+     input vs_out,

@@ -13,7 +13,9 @@ wire [ 7:0] scrx;
 wire [ 7:0] snd_addr, snd_dout;
 wire        bgram_we, fgram_we, cpu_a0, flip, bg_en, fg_en, obj_en,
             vint, snd_we, snd_cs, snd_bank, obj_cmode, obj_commit, obj_pending, fg_page, fg_cpage, fg_both,
-            bg_page, bg_cpage, bg_both, scr_flip;
+            bg_page, bg_cpage, bg_both, scr_flip, vid_lhbl, vid_lvbl, vid_hs, vid_vs;
+reg  [ 3:0] vid_sync;
+reg         rom_seen=0;
 
 assign debug_view = 0;
 assign ioctl_din  = 0;
@@ -23,13 +25,19 @@ assign scr_flip   = flip ^ dip_flip;
 assign pal_data   = { palhi_data, pallo_data };
 assign palhi_addr = pallo_addr;
 assign cpu_a0     = cpu_addr[0];
+assign { LHBL, LVBL, HS, VS } = vid_sync;
+
+always @(posedge clk) begin
+    if( ioctl_rom ) rom_seen <= 1;
+    vid_sync <= ioctl_rom || !rom_seen ? 4'd0 : { vid_lhbl, vid_lvbl, vid_hs, vid_vs };
+end
 
 jtfelix_main u_main(
     .rst         ( rst            ),
     .clk         ( clk            ),
     .cpu_cen     ( cpu_cen        ),
     .vint        ( vint           ),
-    .LVBL        ( LVBL           ),
+    .LVBL        ( vid_lvbl       ),
     .cab_1p      ( cab_1p[1:0]    ),
     .coin        ( coin[1:0]      ),
     .service     ( service        ),
@@ -117,10 +125,10 @@ jtfelix_video u_video(
     .bg_en       ( bg_en          ),
     .fg_en       ( fg_en          ),
     .obj_en      ( obj_en         ),
-    .LHBL        ( LHBL           ),
-    .LVBL        ( LVBL           ),
-    .HS          ( HS             ),
-    .VS          ( VS             ),
+    .LHBL        ( vid_lhbl       ),
+    .LVBL        ( vid_lvbl       ),
+    .HS          ( vid_hs         ),
+    .VS          ( vid_vs         ),
     .vint        ( vint           ),
     .bgrom_addr  ( bgrom_addr     ),
     .bgrom_cs    ( bgrom_cs       ),
